@@ -23,6 +23,7 @@ import {
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getCategoryName } from '@/lib/utils';
 
 const expenseSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -77,6 +78,8 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
   };
 
   const watchTitle = form.watch("title");
+  const watchCategoryId = form.watch("categoryId");
+  const selectedCategory = categories.find(c => c.id === watchCategoryId);
   
   // Smart Suggestions: Previous records + Recurring
   const historySuggestions = useLiveQuery(
@@ -105,7 +108,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
               <FormLabel>Title</FormLabel>
               <FormControl>
                 <Input 
-                  placeholder="What did you spend on?" 
+                  placeholder={selectedCategory?.type === 'inflow' ? "Where did you earn this?" : "What did you spend on?"} 
                   {...field} 
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
@@ -165,7 +168,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="amount"
@@ -206,17 +209,16 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
               <FormLabel>Category</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
+                  <SelectTrigger className="h-11 bg-muted/50 border-none">
+                    <SelectValue placeholder="Select category">
+                      {field.value ? getCategoryName(categories, field.value) : "Select category"}
+                    </SelectValue>
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                        {cat.name}
-                      </div>
+                      {cat.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -26,7 +26,7 @@ import {
   DialogTrigger 
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn, getCategoryName } from '@/lib/utils';
 
 const Recurring: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -138,7 +138,9 @@ const Recurring: React.FC = () => {
                  <Label>Category</Label>
                  <Select onValueChange={(v) => setCategoryId(v || '')} value={categoryId}>
                    <SelectTrigger className="h-11 bg-muted/50 border-none">
-                     <SelectValue placeholder="Select category" />
+                     <SelectValue placeholder="Select category">
+                       {categoryId ? getCategoryName(categories, categoryId) : "Select category"}
+                     </SelectValue>
                    </SelectTrigger>
                    <SelectContent>
                      {categories.map(cat => (

@@ -17,6 +17,7 @@ export interface Category {
   color: string;
   icon?: string;
   budget?: number;
+  type: 'inflow' | 'outflow';
 }
 
 export interface SavingsGoal {
@@ -55,11 +56,13 @@ export interface Profile {
 export interface Settings {
   id: number;
   theme: 'light' | 'dark' | 'system';
+  accentColor?: string;
   overspendingAlert: boolean;
   alertThreshold: number; // percentage
   emailReports: boolean;
   emailAddress?: string;
   billReminders: boolean;
+  totalSavings: number;
 }
 
 export class EquilibriumDB extends Dexie {
@@ -73,9 +76,9 @@ export class EquilibriumDB extends Dexie {
 
   constructor() {
     super('EquilibriumDB');
-    this.version(1).stores({
+    this.version(2).stores({
       expenses: '++id, date, categoryId, title',
-      categories: 'id, name',
+      categories: 'id, name, type',
       savingsGoals: '++id, title',
       budgets: '++id, categoryId, period',
       recurringExpenses: '++id, title, categoryId',

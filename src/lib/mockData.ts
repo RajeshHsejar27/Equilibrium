@@ -1,4 +1,4 @@
-import { db } from './db';
+import { db, type Category } from './db';
 import { subMonths, startOfMonth, subDays } from 'date-fns';
 
 export const initializeMockData = async () => {
@@ -6,13 +6,13 @@ export const initializeMockData = async () => {
   if (categoriesCount > 0) return;
 
   // Categories
-  const categories = [
-    { id: '1', name: 'Food & Dining', color: '#ef4444', icon: 'Utensils' },
-    { id: '2', name: 'Transport', color: '#f59e0b', icon: 'Bus' },
-    { id: '3', name: 'Shopping', color: '#3b82f6', icon: 'ShoppingBag' },
-    { id: '4', name: 'Housing', color: '#10b981', icon: 'Home' },
-    { id: '5', name: 'Entertainment', color: '#8b5cf6', icon: 'Film' },
-    { id: '6', name: 'Income', color: '#22c55e', icon: 'DollarSign' },
+  const categories: Category[] = [
+    { id: '1', name: 'Food & Dining', color: '#ef4444', icon: 'Utensils', type: 'outflow' },
+    { id: '2', name: 'Transport', color: '#f59e0b', icon: 'Bus', type: 'outflow' },
+    { id: '3', name: 'Shopping', color: '#3b82f6', icon: 'ShoppingBag', type: 'outflow' },
+    { id: '4', name: 'Housing', color: '#10b981', icon: 'Home', type: 'outflow' },
+    { id: '5', name: 'Entertainment', color: '#8b5cf6', icon: 'Film', type: 'outflow' },
+    { id: '6', name: 'Income', color: '#22c55e', icon: 'DollarSign', type: 'inflow' },
   ];
   await db.categories.bulkAdd(categories);
 
@@ -63,7 +63,8 @@ export const initializeMockData = async () => {
     overspendingAlert: true, 
     alertThreshold: 80,
     emailReports: false,
-    billReminders: false
+    billReminders: false,
+    totalSavings: 50000
   });
   
   // Profile

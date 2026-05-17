@@ -22,7 +22,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { startOfMonth, endOfMonth, isWithinInterval, format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn, getCategoryName } from '@/lib/utils';
 
 const Budgets: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -51,6 +51,11 @@ const Budgets: React.FC = () => {
         await db.budgets.update(editingBudget.id!, budgetData);
         toast.success("Budget updated");
       } else {
+        const existing = await db.budgets.where({ categoryId, period: currentPeriod }).first();
+        if (existing) {
+          toast.error("Budget already exists for this category this month. Edit the existing one instead.");
+          return;
+        }
         await db.budgets.add(budgetData);
         toast.success("Budget set");
       }
@@ -90,7 +95,9 @@ const Budgets: React.FC = () => {
                  <Label>Category</Label>
                  <Select onValueChange={(v) => setCategoryId(v || '')} value={categoryId}>
                    <SelectTrigger className="h-11">
-                     <SelectValue placeholder="Select category" />
+                     <SelectValue placeholder="Select category">
+                       {categoryId ? getCategoryName(categories, categoryId) : "Select category"}
+                     </SelectValue>
                    </SelectTrigger>
                    <SelectContent>
                      {categories.filter(c => c.id !== '6').map(cat => (

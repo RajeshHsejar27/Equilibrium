@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -6,16 +6,16 @@ import {
   PiggyBank, 
   BarChart3, 
   Settings, 
-  Plus,
   FolderTree,
   Wallet,
   Repeat,
-  Download
+  Download,
+  MoreHorizontal
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -42,6 +42,24 @@ const navItems = [
 const MainLayout: React.FC = () => {
   const profile = useLiveQuery(() => db.profile.get(1));
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isMenuOpen]);
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -89,7 +107,7 @@ const MainLayout: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-hidden">
+      <main className="flex-1 flex flex-col relative">
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between px-6 h-16 border-b bg-card/80 backdrop-blur-md text-card-foreground sticky top-0 z-40">
           <div className="flex items-center gap-2">
@@ -106,7 +124,7 @@ const MainLayout: React.FC = () => {
           </NavLink>
         </header>
 
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="container max-w-6xl mx-auto p-4 md:p-8 pb-32 md:pb-8">
              <motion.div
                key={window.location.pathname}
@@ -117,67 +135,136 @@ const MainLayout: React.FC = () => {
                 <Outlet />
              </motion.div>
           </div>
-        </ScrollArea>
-
-        {/* Mobile Bottom Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-card/90 backdrop-blur-lg border-t flex items-center justify-around px-6 z-40 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
-          {navItems.slice(0, 4).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex flex-col items-center justify-center gap-1.5 transition-all duration-300",
-                  isActive ? "text-primary scale-110" : "text-muted-foreground"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <div className={cn(
-                    "p-2 rounded-xl transition-all",
-                    isActive ? "bg-primary/10" : ""
-                  )}>
-                    <item.icon size={22} />
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-tighter">{item.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-          <NavLink
-              to="/settings"
-              className={({ isActive }) =>
-                cn(
-                  "flex flex-col items-center justify-center gap-1.5 transition-all duration-300",
-                  isActive ? "text-primary scale-110" : "text-muted-foreground"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <div className={cn(
-                    "p-2 rounded-xl transition-all",
-                    isActive ? "bg-primary/10" : ""
-                  )}>
-                    <Settings size={22} />
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-tighter">More</span>
-                </>
-              )}
-            </NavLink>
-        </nav>
-
-        {/* Floating Action Button (FAB) for Mobile */}
-        <div className="md:hidden fixed bottom-24 right-6 z-50">
-          <Button 
-            size="icon" 
-            className="h-16 w-16 rounded-2xl shadow-2xl shadow-primary/40 bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-all"
-            onClick={() => setIsAddDialogOpen(true)}
-          >
-            <Plus size={32} strokeWidth={3} />
-          </Button>
         </div>
+
+        {/* Mobile Bottom Navigation & Popover */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <>
+              {/* Soft blur backdrop overlay */}
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMenuOpen(false)}
+                className="fixed inset-0 bg-background/25 backdrop-blur-[2px] z-40 md:hidden"
+              />
+              
+              {/* Framer Motion Popover Menu */}
+              <motion.div
+                ref={menuRef}
+                initial={{ opacity: 0, scale: 0.9, y: 15, x: "-50%" }}
+                animate={{ opacity: 1, scale: 1, y: 0, x: "-50%" }}
+                exit={{ opacity: 0, scale: 0.9, y: 15, x: "-50%" }}
+                transition={{ type: "spring", stiffness: 380, damping: 26 }}
+                className="fixed bottom-24 left-1/2 w-[280px] bg-card/95 backdrop-blur-xl border border-border/80 rounded-3xl p-4 shadow-2xl z-50 md:hidden flex flex-col gap-2"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { icon: Wallet, label: 'Budgets', to: '/budgets' },
+                    { icon: Repeat, label: 'Recurring', to: '/recurring' },
+                    { icon: Download, label: 'Import/Export', to: '/import-export' },
+                    { icon: Settings, label: 'Settings', to: '/settings' },
+                  ].map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setIsMenuOpen(false)}
+                      className={({ isActive }) =>
+                        cn(
+                          "flex flex-col items-center justify-center p-3 rounded-2xl transition-all gap-1.5",
+                          isActive 
+                            ? "bg-primary text-primary-foreground shadow-md shadow-primary/10" 
+                            : "hover:bg-muted text-muted-foreground hover:text-foreground bg-muted/40"
+                        )
+                      }
+                    >
+                      <item.icon size={20} />
+                      <span className="text-[10px] font-black uppercase tracking-wider">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-card/90 backdrop-blur-lg border-t flex items-center justify-around px-2 z-40 rounded-t-3xl shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.15)] border-muted-foreground/10">
+          {/* Left Tabs */}
+          <div className="flex w-2/5 justify-around items-center h-full">
+            {[
+              { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
+              { icon: Receipt, label: 'Expenses', to: '/expenses' },
+            ].map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  cn(
+                    "flex flex-col items-center justify-center gap-1.5 transition-all duration-300 w-16",
+                    isActive ? "text-primary scale-110" : "text-muted-foreground"
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <div className={cn(
+                      "p-2 rounded-2xl transition-all",
+                      isActive ? "bg-primary/10" : ""
+                    )}>
+                      <item.icon size={20} />
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-widest">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+
+          {/* Elevated Circular Center Menu Button */}
+          <div className="relative -top-4 flex justify-center items-center z-50">
+            <Button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className={cn(
+                "h-14 w-14 rounded-full shadow-lg shadow-primary/30 flex items-center justify-center transition-all duration-300 bg-primary text-primary-foreground",
+                isMenuOpen ? "scale-90 opacity-90" : "hover:scale-105 active:scale-95"
+              )}
+            >
+              <MoreHorizontal size={24} className={cn("transition-transform duration-300", isMenuOpen ? "rotate-90" : "")} />
+            </Button>
+          </div>
+
+          {/* Right Tabs */}
+          <div className="flex w-2/5 justify-around items-center h-full">
+            {[
+              { icon: BarChart3, label: 'Analytics', to: '/analytics' },
+              { icon: PiggyBank, label: 'Savings', to: '/savings' },
+            ].map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  cn(
+                    "flex flex-col items-center justify-center gap-1.5 transition-all duration-300 w-16",
+                    isActive ? "text-primary scale-110" : "text-muted-foreground"
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <div className={cn(
+                      "p-2 rounded-2xl transition-all",
+                      isActive ? "bg-primary/10" : ""
+                    )}>
+                      <item.icon size={20} />
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-widest">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
       </main>
 
       {/* Global Add Dialog */}

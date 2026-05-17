@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Download, Upload, FileSpreadsheet, FileText, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import * as XLSX from 'xlsx';
+// import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx/xlsx.mjs';
 import { toast } from 'sonner';
 import { 
   Dialog, 
@@ -20,28 +21,311 @@ const ImportExport: React.FC = () => {
   const [previewData, setPreviewData] = useState<Expense[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
-  const handleExport = async (format: 'xlsx' | 'csv') => {
-    try {
-      const expenses = await db.expenses.toArray();
-      const exportData = expenses.map(e => ({
-        ...e,
-        date: e.date.toISOString().split('T')[0]
-      }));
+  // const handleExport = async (format: 'xlsx' | 'csv') => {
+  //   try {
+  //     const expenses = await db.expenses.toArray();
+  //     const categories = await db.categories.toArray();
+  //     const budgets = await db.budgets.toArray();
+  //     const recurring = await db.recurringExpenses.toArray();
+  //     const goals = await db.savingsGoals.toArray();
+  //     const settings = await db.settings.toArray();
+  //     const profile = await db.profile.toArray();
 
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Expenses");
+  //     const workbook = XLSX.utils.book_new();
 
-      if (format === 'xlsx') {
-        XLSX.writeFile(workbook, `equilibrium_expenses_${new Date().toISOString().split('T')[0]}.xlsx`);
-      } else {
-        XLSX.writeFile(workbook, `equilibrium_expenses_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
-      }
-      toast.success(`Expenses exported as ${format.toUpperCase()}`);
-    } catch (error) {
-      toast.error("Export failed");
+  //     // Sheets preparation
+  //     const expensesData = expenses.map(e => {
+  //       const { categoryId, ...rest } = e;
+  //       return {
+  //         ...rest,
+  //         date: e.date.toISOString().split('T')[0],
+  //         category: categories.find(c => c.id === e.categoryId)?.name || 'Uncategorized'
+  //       };
+  //     });
+  //     const categoriesData = categories;
+  //     const budgetsData = budgets;
+  //     const recurringData = recurring;
+  //     const goalsData = goals;
+  //     const settingsData = settings;
+  //     const profileData = profile;
+
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expensesData), "Expenses");
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(categoriesData), "Categories");
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(budgetsData), "Budgets");
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(recurringData), "Recurring");
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(goalsData), "SavingsGoals");
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(settingsData), "Settings");
+  //     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(profileData), "Profile");
+
+  //     const timestamp = new Date().toISOString().split('T')[0];
+  //     if (format === 'xlsx') {
+  //       XLSX.writeFile(workbook, `equilibrium_full_backup_${timestamp}.xlsx`);
+  //     } else {
+  //       // CSV only supports one sheet, exporting expenses
+  //       XLSX.writeFile(workbook, `equilibrium_expenses_${timestamp}.csv`, { bookType: 'csv' });
+  //     }
+  //     toast.success(`Data exported successfully`);
+  //   } catch (error) {
+  //     toast.error("Export failed");
+  //   }
+  // };
+
+  const handleExport = async (
+  format: 'xlsx' | 'csv'
+) => {
+  try {
+    const expenses =
+      await db.expenses.toArray();
+
+    const categories =
+      await db.categories.toArray();
+
+    const budgets =
+      await db.budgets.toArray();
+
+    const recurring =
+      await db.recurringExpenses.toArray();
+
+    const goals =
+      await db.savingsGoals.toArray();
+
+    const settings =
+      await db.settings.toArray();
+
+    const profile =
+      await db.profile.toArray();
+
+    const workbook =
+      XLSX.utils.book_new();
+
+    // Prevent Excel 32767 char crash
+    const sanitizeForExcel = (
+      data: any[]
+    ) => {
+      return data.map(item => {
+        const clean: any = {};
+
+        Object.entries(item).forEach(
+          ([key, value]) => {
+
+            const blockedFields = [
+              'profilePicture',
+              'profileImage',
+              'avatar',
+              'image',
+              'blob',
+              'preview',
+              'base64',
+              'file'
+            ];
+
+            // Replace huge image fields
+            if (
+              blockedFields.includes(key)
+            ) {
+              clean[key] =
+                '[Excluded from export]';
+              return;
+            }
+
+            // Strings
+            if (
+              typeof value === 'string'
+            ) {
+              if (
+                value.length > 32767
+              ) {
+                console.warn(
+                  'Large export field:',
+                  key,
+                  value.length
+                );
+              }
+
+              clean[key] =
+                value.length > 30000
+                  ? value.slice(0, 30000)
+                  : value;
+            }
+
+            // Dates
+            else if (
+              value instanceof Date
+            ) {
+              clean[key] =
+                isNaN(
+                  value.getTime()
+                )
+                  ? ''
+                  : value
+                      .toISOString()
+                      .split('T')[0];
+            }
+
+            // Nested Objects
+            else if (
+              typeof value === 'object' &&
+              value !== null
+            ) {
+              const stringified =
+                JSON.stringify(value);
+
+              clean[key] =
+                stringified.length >
+                30000
+                  ? stringified.slice(
+                      0,
+                      30000
+                    )
+                  : stringified;
+            }
+
+            // Numbers/Booleans
+            else {
+              clean[key] = value;
+            }
+          }
+        );
+
+        return clean;
+      });
+    };
+
+    const safeSheet = (
+      data: any[]
+    ) =>
+      XLSX.utils.json_to_sheet(
+        data.length
+          ? sanitizeForExcel(
+              data
+            )
+          : [{}]
+      );
+
+    // Expenses Sheet
+    const expensesData =
+      expenses.map(e => {
+        const {
+          categoryId,
+          ...rest
+        } = e;
+
+        return {
+          ...rest,
+          date:
+            e.date instanceof Date &&
+            !isNaN(
+              e.date.getTime()
+            )
+              ? e.date
+                  .toISOString()
+                  .split('T')[0]
+              : '',
+          category:
+            categories.find(
+              c =>
+                c.id ===
+                e.categoryId
+            )?.name ||
+            'Uncategorized'
+        };
+      });
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(expensesData),
+      'Expenses'
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(categories),
+      'Categories'
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(budgets),
+      'Budgets'
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(recurring),
+      'Recurring'
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(goals),
+      'SavingsGoals'
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(settings),
+      'Settings'
+    );
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      safeSheet(profile),
+      'Profile'
+    );
+
+    const timestamp =
+      new Date()
+        .toISOString()
+        .split('T')[0];
+
+    // XLSX Export
+    if (format === 'xlsx') {
+      XLSX.writeFile(
+        workbook,
+        `equilibrium_full_backup_${timestamp}.xlsx`
+      );
     }
-  };
+
+    // CSV Export
+    else {
+      const csvSheet =
+        XLSX.utils.json_to_sheet(
+          expensesData
+        );
+
+      XLSX.writeFile(
+        {
+          SheetNames: [
+            'Expenses'
+          ],
+          Sheets: {
+            Expenses:
+              csvSheet
+          }
+        },
+        `equilibrium_expenses_${timestamp}.csv`,
+        {
+          bookType: 'csv'
+        }
+      );
+    }
+
+    toast.success(
+      'Data exported successfully'
+    );
+
+  } catch (error) {
+
+    console.error(
+      'Export error:',
+      error
+    );
+
+    toast.error(
+      'Export failed'
+    );
+  }
+};
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

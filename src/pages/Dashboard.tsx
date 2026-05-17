@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { useStore } from '@/store/useStore';
@@ -36,36 +37,64 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const timeframe = useStore((state) => state.timeframe);
   const setTimeframe = useStore((state) => state.setTimeframe);
 
   const expenses = useLiveQuery(() => db.expenses.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
   const savingsGoals = useLiveQuery(() => db.savingsGoals.toArray()) || [];
+  const settings = useLiveQuery(() => db.settings.get(1));
+
+  if (!categories || categories.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   const now = new Date();
   const currentMonthStart = startOfMonth(now);
   const currentMonthEnd = endOfMonth(now);
   const lastMonthStart = startOfMonth(subMonths(now, 1));
   const lastMonthEnd = endOfMonth(subMonths(now, 1));
+  const sixMonthsAgo = startOfMonth(subMonths(now, 5));
 
-  // Calculations
-  const currentMonthExpenses = expenses.filter(e => 
-    isWithinInterval(e.date, { start: currentMonthStart, end: currentMonthEnd }) && e.categoryId !== '6'
-  );
-  const currentMonthIncome = expenses.filter(e => 
-    isWithinInterval(e.date, { start: currentMonthStart, end: currentMonthEnd }) && e.categoryId === '6'
+  const timeframeStart = timeframe === 'month' ? currentMonthStart : sixMonthsAgo;
+  const timeframeEnd = currentMonthEnd;
+
+  // Filtered data for timeframe
+  const filteredExpenses = expenses.filter(e => 
+    isWithinInterval(e.date, { start: timeframeStart, end: timeframeEnd })
   );
 
-  const lastMonthExpensesTotal = expenses
-    .filter(e => isWithinInterval(e.date, { start: lastMonthStart, end: lastMonthEnd }) && e.categoryId !== '6')
+  const periodExpenses = filteredExpenses.filter(e => {
+    const cat = categories.find(c => c.id === e.categoryId);
+    return cat?.type !== 'inflow';
+  });
+  
+  const periodIncome = filteredExpenses.filter(e => {
+    const cat = categories.find(c => c.id === e.categoryId);
+    return cat?.type === 'inflow';
+  });
+
+  const totalExpenses = periodExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalIncome = periodIncome.reduce((acc, curr) => acc + curr.amount, 0);
+
+  // Comparison for the card percentages (always month vs month)
+  const currentMonthExpensesTotal = expenses
+    .filter(e => isWithinInterval(e.date, { start: currentMonthStart, end: currentMonthEnd }))
+    .filter(e => categories.find(c => c.id === e.categoryId)?.type !== 'inflow')
     .reduce((acc, curr) => acc + curr.amount, 0);
 
-  const totalExpenses = currentMonthExpenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalIncome = currentMonthIncome.reduce((acc, curr) => acc + curr.amount, 0);
+  const lastMonthExpensesTotal = expenses
+    .filter(e => isWithinInterval(e.date, { start: lastMonthStart, end: lastMonthEnd }))
+    .filter(e => categories.find(c => c.id === e.categoryId)?.type !== 'inflow')
+    .reduce((acc, curr) => acc + curr.amount, 0);
 
   const expenseChange = lastMonthExpensesTotal > 0 
-    ? ((totalExpenses - lastMonthExpensesTotal) / lastMonthExpensesTotal) * 100 
+    ? ((currentMonthExpensesTotal - lastMonthExpensesTotal) / lastMonthExpensesTotal) * 100 
     : 0;
 
   // Graph Data
@@ -73,14 +102,20 @@ const Dashboard: React.FC = () => {
     if (timeframe === 'month') {
       return eachDayOfInterval({ start: currentMonthStart, end: now }).map(day => {
         const amount = expenses
-          .filter(e => startOfDay(e.date).getTime() === startOfDay(day).getTime() && e.categoryId !== '6')
+          .filter(e => {
+            const cat = categories.find(c => c.id === e.categoryId);
+            return startOfDay(e.date).getTime() === startOfDay(day).getTime() && cat?.type !== 'inflow';
+          })
           .reduce((acc, curr) => acc + curr.amount, 0);
         return { name: format(day, 'dd MMM'), amount };
       });
     } else {
       return eachMonthOfInterval({ start: subMonths(now, 5), end: now }).map(month => {
         const amount = expenses
-          .filter(e => isWithinInterval(e.date, { start: startOfMonth(month), end: endOfMonth(month) }) && e.categoryId !== '6')
+          .filter(e => {
+            const cat = categories.find(c => c.id === e.categoryId);
+            return isWithinInterval(e.date, { start: startOfMonth(month), end: endOfMonth(month) }) && cat?.type !== 'inflow';
+          })
           .reduce((acc, curr) => acc + curr.amount, 0);
         return { name: format(month, 'MMM'), amount };
       });
@@ -89,11 +124,11 @@ const Dashboard: React.FC = () => {
 
   const chartData = getGraphData();
 
-  // Category Data
+  // Category Data for pie chart
   const categoryData = categories
-    .filter(c => c.id !== '6')
+    .filter(c => c.type !== 'inflow')
     .map(cat => {
-      const amount = currentMonthExpenses
+      const amount = periodExpenses
         .filter(e => e.categoryId === cat.id)
         .reduce((acc, curr) => acc + curr.amount, 0);
       const percentage = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0;
@@ -157,7 +192,7 @@ const Dashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-all border-l-4 border-l-primary">
+         <Card className="hover:shadow-lg transition-all border-l-4 border-l-primary">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Savings Progress</CardTitle>
             <PiggyBank className="h-4 w-4 text-primary" />
@@ -165,10 +200,10 @@ const Dashboard: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold">₹{savingsGoals.reduce((acc, g) => acc + g.currentAmount, 0).toLocaleString()}</div>
             <div className="mt-3 space-y-1">
-               <Progress value={45} className="h-1.5" />
+               <Progress value={(savingsGoals.reduce((acc, g) => acc + g.currentAmount, 0) / (settings?.totalSavings || 1)) * 100} className="h-1.5" />
                <div className="flex justify-between text-[10px] text-muted-foreground">
                  <span>Progress</span>
-                 <span>Target: ₹2,00,000</span>
+                 <span>Target: ₹{(settings?.totalSavings || 0).toLocaleString()}</span>
                </div>
             </div>
           </CardContent>
@@ -198,18 +233,18 @@ const Dashboard: React.FC = () => {
           <CardContent className="h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground))" opacity={0.1} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--muted-foreground)" opacity={0.1} />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} 
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} 
                   interval={timeframe === 'month' ? 4 : 0}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} 
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} 
                   tickFormatter={(value) => `₹${value >= 1000 ? value/1000 + 'k' : value}`}
                 />
                 <Tooltip 
@@ -217,18 +252,18 @@ const Dashboard: React.FC = () => {
                     borderRadius: '16px', 
                     border: 'none', 
                     boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
-                    backgroundColor: 'hsl(var(--card))',
-                    color: 'hsl(var(--foreground))'
+                    backgroundColor: 'var(--card)',
+                    color: 'var(--foreground)'
                   }}
-                  itemStyle={{ color: 'hsl(var(--primary))', fontWeight: 'bold' }}
+                  itemStyle={{ color: 'var(--foreground)', fontWeight: 'bold' }}
                 />
                 <Line 
                   type="monotone" 
                   dataKey="amount" 
-                  stroke="hsl(var(--primary))" 
+                  stroke="#3b82f6" 
                   strokeWidth={4} 
-                  dot={false}
-                  activeDot={{ r: 6, strokeWidth: 0, fill: "hsl(var(--primary))" }}
+                  dot={{ r: 4, fill: "#3b82f6", strokeWidth: 0 }}
+                  activeDot={{ r: 6, strokeWidth: 0, fill: "#3b82f6" }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -259,7 +294,16 @@ const Dashboard: React.FC = () => {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    contentStyle={{ 
+                      borderRadius: '16px', 
+                      border: 'none', 
+                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                      backgroundColor: 'var(--card)',
+                      color: 'var(--foreground)'
+                    }}
+                    itemStyle={{ color: 'var(--foreground)' }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -292,7 +336,7 @@ const Dashboard: React.FC = () => {
               <CardTitle>Recent Activity</CardTitle>
               <CardDescription>Your latest transactions</CardDescription>
             </div>
-            <Button variant="outline" size="sm" className="h-8">View All</Button>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => navigate('/expenses')}>View All</Button>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -306,11 +350,13 @@ const Dashboard: React.FC = () => {
                       </div>
                       <div>
                         <p className="font-semibold text-sm">{expense.title}</p>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">{cat?.name} • {format(expense.date, 'MMM dd')}</p>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                          {cat ? `${cat.name} • ` : ''}{format(expense.date, 'MMM dd')}
+                        </p>
                       </div>
                     </div>
-                    <div className={cn("font-black tabular-nums", expense.categoryId === '6' ? "text-green-500" : "text-foreground")}>
-                      {expense.categoryId === '6' ? '+' : '-'}₹{expense.amount.toLocaleString()}
+                    <div className={cn("font-black tabular-nums", cat?.type === 'inflow' ? "text-green-500" : "text-foreground")}>
+                      {cat?.type === 'inflow' ? '+' : '-'}₹{expense.amount.toLocaleString()}
                     </div>
                   </div>
                 );
@@ -323,7 +369,7 @@ const Dashboard: React.FC = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
              <h2 className="text-lg font-bold tracking-tight">Active Savings</h2>
-             <Button variant="ghost" size="sm" className="h-8 text-primary">Manage</Button>
+             <Button variant="ghost" size="sm" className="h-8 text-primary" onClick={() => navigate('/savings')}>Manage</Button>
           </div>
           <div className="grid gap-4">
             {savingsGoals.slice(0, 2).map(goal => (

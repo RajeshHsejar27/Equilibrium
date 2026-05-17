@@ -28,6 +28,13 @@ import {
 import { useTheme } from '@/context/ThemeContext';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const Settings: React.FC = () => {
   const { theme, setTheme } = useTheme();
@@ -55,11 +62,22 @@ const Settings: React.FC = () => {
     toast.success("Profile updated");
   };
 
-  const handleUpdateAvatar = async () => {
-    // Mock avatar upload
-    const mockAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop";
-    await db.profile.update(1, { avatar: mockAvatar });
-    toast.success("Avatar updated");
+  const handleUpdateAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("File size must be less than 2MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      await db.profile.update(1, { avatar: base64 });
+      toast.success("Avatar updated");
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleInstall = async () => {
@@ -93,7 +111,7 @@ const Settings: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-6">
              <div className="flex flex-col items-center gap-4">
-                <div className="relative group cursor-pointer" onClick={handleUpdateAvatar}>
+                <div className="relative group cursor-pointer" onClick={() => document.getElementById('avatar-upload')?.click()}>
                   <Avatar className="h-24 w-24 border-4 border-muted shadow-xl transition-all group-hover:opacity-80">
                     <AvatarImage src={profile?.avatar} />
                     <AvatarFallback className="text-2xl bg-primary text-primary-foreground font-black">
@@ -103,6 +121,13 @@ const Settings: React.FC = () => {
                   <div className="absolute bottom-0 right-0 p-1.5 bg-primary text-primary-foreground rounded-full shadow-lg">
                      <Camera size={16} />
                   </div>
+                  <input 
+                    id="avatar-upload" 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={handleUpdateAvatar} 
+                  />
                 </div>
                 <div className="w-full space-y-2">
                    <Label>Display Name</Label>
@@ -148,7 +173,11 @@ const Settings: React.FC = () => {
                    {['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'].map(color => (
                      <div 
                        key={color} 
-                       className="w-8 h-8 rounded-full cursor-pointer hover:scale-110 transition-transform shadow-sm border-2 border-transparent hover:border-foreground/20" 
+                       onClick={() => db.settings.update(1, { accentColor: color })}
+                       className={cn(
+                         "w-8 h-8 rounded-full cursor-pointer hover:scale-110 transition-all shadow-sm border-2",
+                         settings?.accentColor === color ? "border-foreground scale-110" : "border-transparent hover:border-foreground/20"
+                       )}
                        style={{ backgroundColor: color }}
                      />
                    ))}
@@ -181,14 +210,25 @@ const Settings: React.FC = () => {
                 <div className="space-y-4">
                    <div className="flex justify-between">
                       <Label className="text-sm">Alert Threshold</Label>
-                      <span className="text-sm font-black text-primary">{settings?.alertThreshold}%</span>
+                      <span className="text-sm font-black text-primary">{settings?.alertThreshold || 80}%</span>
                    </div>
-                   <Slider 
-                     value={[settings?.alertThreshold || 80]} 
-                     onValueChange={(val: any) => db.settings.update(1, { alertThreshold: val[0] })} 
-                     max={100} 
-                     step={5} 
-                   />
+                   <TooltipProvider>
+                     <Tooltip>
+                       <TooltipTrigger>
+                         <div className="pt-2">
+                           <Slider 
+                             value={[settings?.alertThreshold || 80]} 
+                             onValueChange={(val: any) => db.settings.update(1, { alertThreshold: val[0] })} 
+                             max={100} 
+                             step={5} 
+                           />
+                         </div>
+                       </TooltipTrigger>
+                       <TooltipContent>
+                         <p>Notify when spending exceeds {settings?.alertThreshold || 80}% of your budget</p>
+                       </TooltipContent>
+                     </Tooltip>
+                   </TooltipProvider>
                 </div>
              </div>
              
