@@ -4,10 +4,27 @@ import App from './App'
 import './index.css'
 import { initializeMockData } from './lib/mockData'
 
-initializeMockData().then(() => {
+// Original implementation (commented out):
+// initializeMockData().then(() => {
+//   ReactDOM.createRoot(document.getElementById('root')!).render(
+//     <React.StrictMode>
+//       <App />
+//     </React.StrictMode>,
+//   )
+// })
+
+// Conditional loading: mock data only in development
+const initializeApp = async () => {
+  // Only load mock data in development
+  if (import.meta.env.DEV) {
+    await initializeMockData()
+  }
+  
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <App />
     </React.StrictMode>,
   )
-})
+}
+
+initializeApp()
