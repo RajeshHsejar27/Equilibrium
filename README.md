@@ -14,6 +14,31 @@ A mobile-first, responsive, offline-first personal expense tracking application 
 *   **Data Portability**: Full system backup and export via multi-sheet Excel (XLSX).
 *   **PWA Support**: Fully installable on Android and iOS with service worker support.
 
+## Alerts & Notifications
+
+The application provides intelligent, real-time alerts and notifications to help you stay on top of your finances:
+
+### Notification Types
+
+*   **Budget Alerts**: Get notified when spending in a category approaches or exceeds your monthly budget threshold.
+*   **High Spending Warnings**: Receive alerts when a single category account for a significant portion of your monthly expenses.
+*   **Savings Deficit Alerts**: Automatic warning when total allocated savings exceeds your master savings pool balance.
+*   **Budget Master Achievements**: Positive reinforcement when you spend less than the previous month.
+*   **Recurring Payment Reminders**: Suggestions to review and optimize your recurring/subscription transactions.
+*   **Transaction Confirmations**: Instant toast notifications confirming successful expense entries, edits, and deletions.
+
+### Notification Delivery
+
+*   **Toast Notifications**: Non-intrusive, auto-dismissing notifications displayed at the bottom-right corner using Sonner.
+*   **In-App Alerts**: Dialog-based alerts for critical warnings (e.g., savings deficit) requiring user acknowledgment.
+*   **Dashboard Cards**: Quick-view insight cards displaying active alerts and actionable recommendations.
+
+### Smart Alert Logic
+
+*   **Context-Aware**: Alerts adapt based on your spending patterns and budget configurations.
+*   **Non-Intrusive**: Notifications don't disrupt your workflow—only alert you to critical financial events.
+*   **Dismissible**: All notifications can be dismissed with a single click or swipe.
+
 ## Tech Stack
 
 *   **Frontend**: React 18, TypeScript, Vite 6
@@ -23,6 +48,7 @@ A mobile-first, responsive, offline-first personal expense tracking application 
 *   **Data Visualization**: Recharts
 *   **Data Grid**: TanStack Table v8
 *   **Forms**: React Hook Form, Zod Validation
+*   **Notifications**: Sonner (Toast & Alert Management)
 
 ## Configuration & Schema
 

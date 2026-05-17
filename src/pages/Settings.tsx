@@ -29,6 +29,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { exportData } from '@/lib/exportData';
 const MIN_ALERT_THRESHOLD = 40;
 const MAX_ALERT_THRESHOLD = 100;
 const ALERT_THRESHOLD_STEP = 5;
@@ -405,10 +406,20 @@ const Settings: React.FC = () => {
                 </div>
              </div>
              <div className="flex gap-4">
-                <Button variant="ghost" size="sm" className="text-xs font-bold gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs font-bold gap-2"
+                  onClick={() => window.location.href = 'mailto:nrh27magnum@gmail.com?subject=Equilibrium help request'}
+                >
                    <ExternalLink size={14} /> Help Center
                 </Button>
-                <Button variant="ghost" size="sm" className="text-xs font-bold gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs font-bold gap-2"
+                  onClick={() => exportData('xlsx')}
+                >
                    <Download size={14} /> Export Backup
                 </Button>
              </div>
