@@ -1,5 +1,4 @@
 import { db, type Category } from './db';
-import { subMonths, startOfMonth, subDays } from 'date-fns';
 
 export const initializeMockData = async () => {
   const categoriesCount = await db.categories.count();
@@ -16,57 +15,54 @@ export const initializeMockData = async () => {
   ];
   await db.categories.bulkAdd(categories);
 
-  // Expenses
-  const expenses = [];
+  // Sample transactions: one per category with amount 100 for better first-time UX
   const now = new Date();
-  
-  // Last 3 months of data
-  for (let i = 0; i < 60; i++) {
-    const date = subDays(now, Math.floor(Math.random() * 90));
-    const cat = categories[Math.floor(Math.random() * (categories.length - 1))]; // exclude income
-    expenses.push({
-      title: `${cat.name} Item ${i}`,
-      amount: Math.floor(Math.random() * 1000) + 50,
-      date,
-      categoryId: cat.id,
-    });
-  }
-  
-  // Incomes
-  for (let i = 0; i < 3; i++) {
-    expenses.push({
-      title: 'Monthly Salary',
-      amount: 50000,
-      date: startOfMonth(subMonths(now, i)),
-      categoryId: '6',
-    });
-  }
+  const expenses = [
+    {
+      title: 'Coffee & Breakfast',
+      amount: 100,
+      date: now,
+      categoryId: '1',
+    },
+    {
+      title: 'Taxi Ride',
+      amount: 100,
+      date: now,
+      categoryId: '2',
+    },
+    {
+      title: 'Grocery Items',
+      amount: 100,
+      date: now,
+      categoryId: '3',
+    },
+    {
+      title: 'Rent Payment',
+      amount: 100,
+      date: now,
+      categoryId: '4',
+    },
+    {
+      title: 'Movie Tickets',
+      amount: 100,
+      date: now,
+      categoryId: '5',
+    },
+  ];
   
   await db.expenses.bulkAdd(expenses);
-
-  // Savings Goals
-  await db.savingsGoals.bulkAdd([
-    { title: 'New Bike', targetAmount: 100000, currentAmount: 45000, color: '#3b82f6' },
-    { title: 'Vacation', targetAmount: 50000, currentAmount: 12000, color: '#10b981' },
-  ]);
-
-  // Budgets
-  await db.budgets.bulkAdd([
-    { categoryId: '1', monthlyLimit: 8000, period: '2026-05' },
-    { categoryId: '2', monthlyLimit: 3000, period: '2026-05' },
-  ]);
 
   // Settings
   await db.settings.add({ 
     id: 1, 
-    theme: 'dark', 
-    overspendingAlert: true, 
+    theme: 'light', 
+    overspendingAlert: false, 
     alertThreshold: 80,
     emailReports: false,
     billReminders: false,
-    totalSavings: 50000
+    totalSavings: 0
   });
   
   // Profile
-  await db.profile.add({ id: 1, name: 'Alex Johnson' });
+  await db.profile.add({ id: 1, name: 'User' });
 };
