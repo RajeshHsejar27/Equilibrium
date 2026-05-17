@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { db, type Expense } from '@/lib/db';
+import { db, type Expense, type Category, type Budget, type RecurringExpense, type SavingsGoal } from '@/lib/db';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, Upload, FileSpreadsheet, FileText, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
@@ -17,9 +17,24 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+interface ImportPreview {
+  categories: Category[];
+  expenses: Expense[];
+  budgets: Budget[];
+  recurringExpenses: RecurringExpense[];
+  savingsGoals: SavingsGoal[];
+}
 
 const ImportExport: React.FC = () => {
-  const [previewData, setPreviewData] = useState<Expense[]>([]);
+  const [previewData, setPreviewData] = useState<ImportPreview>({
+    categories: [],
+    expenses: [],
+    budgets: [],
+    recurringExpenses: [],
+    savingsGoals: []
+  });
   const [showPreview, setShowPreview] = useState(false);
 
   // const handleExport = async (format: 'xlsx' | 'csv') => {
@@ -85,25 +100,137 @@ const ImportExport: React.FC = () => {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
 
-        // Validation & Transformation
-        const transformed: Expense[] = (data as any[]).map(item => ({
-          title: item.title || item.Title || '',
-          amount: Number(item.amount || item.Amount || 0),
-          date: new Date(item.date || item.Date),
-          categoryId: String(item.categoryId || item.CategoryId || '1'),
-          note: item.note || item.Note || ''
-        })).filter(item => item.title && !isNaN(item.amount) && !isNaN(item.date.getTime()));
+        // Helper function to parse Excel dates
+        const parseExcelDate = (dateValue: any): Date => {
+          if (!dateValue) return new Date();
+          if (dateValue instanceof Date) return dateValue;
+          if (typeof dateValue === 'string') {
+            const parsed = new Date(dateValue);
+            if (!isNaN(parsed.getTime())) return parsed;
+          }
+          if (typeof dateValue === 'number') {
+            const excelEpoch = new Date(1900, 0, 1).getTime();
+            const millisecondsPerDay = 24 * 60 * 60 * 1000;
+            return new Date(excelEpoch + (dateValue - 2) * millisecondsPerDay);
+          }
+          return new Date();
+        };
 
-        setPreviewData(transformed);
+        const preview: ImportPreview = {
+          categories: [],
+          expenses: [],
+          budgets: [],
+          recurringExpenses: [],
+          savingsGoals: []
+        };
+
+        const existingCategories = await db.categories.toArray();
+
+        // Parse Categories sheet
+        if (wb.SheetNames.includes('Categories')) {
+          const ws = wb.Sheets['Categories'];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+          preview.categories = (data as any[]).map(item => ({
+            id: String(item.id || item.Id || crypto.randomUUID()),
+            name: item.name || item.Name || '',
+            color: item.color || item.Color || '#3b82f6',
+            icon: item.icon || item.Icon,
+            budget: item.budget ? Number(item.budget) : undefined,
+            type: (item.type || item.Type || 'outflow') as 'inflow' | 'outflow'
+          })).filter(c => c.name && c.id);
+        }
+
+        // Parse Expenses sheet
+        if (wb.SheetNames.includes('Expenses')) {
+          const ws = wb.Sheets['Expenses'];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+          
+          // Combine existing + new categories for lookup
+          const allCategories = [...existingCategories, ...preview.categories];
+
+          const resolveCategoryId = (item: any): string => {
+            // Try direct categoryId first
+            if (item.categoryId || item.CategoryId) {
+              const id = String(item.categoryId || item.CategoryId);
+              if (allCategories.some(c => c.id === id)) return id;
+            }
+            // Try category name
+            if (item.category || item.Category) {
+              const categoryName = String(item.category || item.Category);
+              const found = allCategories.find(c => c.name === categoryName);
+              if (found) return found.id;
+            }
+            // Default fallback
+            const defaultCat = allCategories.find(c => c.name === 'Uncategorized') || allCategories[0];
+            return defaultCat?.id || '1';
+          };
+
+          preview.expenses = (data as any[]).map(item => ({
+            title: item.title || item.Title || '',
+            amount: Number(item.amount || item.Amount || 0),
+            date: parseExcelDate(item.date || item.Date),
+            categoryId: resolveCategoryId(item),
+            note: item.note || item.Note || '',
+            isRecurring: item.isRecurring === 'TRUE' || item.isRecurring === true,
+            recurringId: item.recurringId || item.RecurringId
+          })).filter(e => e.title && !isNaN(e.amount) && !isNaN(e.date.getTime()));
+        }
+
+        // Parse Budgets sheet
+        if (wb.SheetNames.includes('Budgets')) {
+          const ws = wb.Sheets['Budgets'];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+          const allCategories = [...existingCategories, ...preview.categories];
+
+          preview.budgets = (data as any[]).map(item => ({
+            categoryId: String(item.categoryId || item.CategoryId || allCategories[0]?.id || '1'),
+            monthlyLimit: Number(item.monthlyLimit || item.MonthlyLimit || 0),
+            period: String(item.period || item.Period || '')
+          })).filter(b => b.categoryId && b.monthlyLimit > 0);
+        }
+
+        // Parse Recurring Expenses sheet
+        if (wb.SheetNames.includes('Recurring')) {
+          const ws = wb.Sheets['Recurring'];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+          const allCategories = [...existingCategories, ...preview.categories];
+
+          preview.recurringExpenses = (data as any[]).map(item => ({
+            title: item.title || item.Title || '',
+            amount: Number(item.amount || item.Amount || 0),
+            categoryId: String(item.categoryId || item.CategoryId || allCategories[0]?.id || '1'),
+            frequency: (item.frequency || item.Frequency || 'monthly') as 'weekly' | 'monthly' | 'yearly',
+            startDate: parseExcelDate(item.startDate || item.StartDate),
+            endDate: item.endDate || item.EndDate ? parseExcelDate(item.endDate || item.EndDate) : undefined,
+            isActive: (item.isActive || item.IsActive) !== 'FALSE' && (item.isActive || item.IsActive) !== false
+          })).filter(r => r.title && !isNaN(r.amount) && !isNaN(r.startDate.getTime()));
+        }
+
+        // Parse Savings Goals sheet
+        if (wb.SheetNames.includes('SavingsGoals')) {
+          const ws = wb.Sheets['SavingsGoals'];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+
+          preview.savingsGoals = (data as any[]).map(item => {
+            const deadlineValue = item.deadline || item.Deadline;
+            return {
+              title: item.title || item.Title || '',
+              targetAmount: Number(item.targetAmount || item.TargetAmount || 0),
+              currentAmount: Number(item.currentAmount || item.CurrentAmount || 0),
+              deadline: deadlineValue ? parseExcelDate(deadlineValue) : undefined,
+              color: item.color || item.Color || '#3b82f6'
+            };
+          }).filter(g => g.title && g.targetAmount > 0);
+        }
+
+        setPreviewData(preview);
         setShowPreview(true);
       } catch (error) {
+        console.error('Parse error:', error);
         toast.error("Failed to parse file. Check the format.");
       } finally {
-        e.target.value = ''; // Reset input
+        e.target.value = '';
       }
     };
     reader.readAsBinaryString(file);
@@ -111,36 +238,120 @@ const ImportExport: React.FC = () => {
 
   const processImport = async () => {
     try {
-      const existing = await db.expenses.toArray();
-      let importedCount = 0;
-      let duplicateCount = 0;
+      let stats = {
+        categories: 0,
+        expenses: 0,
+        budgets: 0,
+        recurring: 0,
+        goals: 0
+      };
 
-      for (const item of previewData) {
-        const isDuplicate = existing.some(e => 
-          e.title === item.title && 
-          e.amount === item.amount && 
-          e.date.getTime() === item.date.getTime()
-        );
-
-        if (!isDuplicate) {
-          await db.expenses.add(item);
-          importedCount++;
-        } else {
-          duplicateCount++;
+      // 1. Import Categories first (so expenses can reference them)
+      if (previewData.categories.length > 0) {
+        const existingCategories = await db.categories.toArray();
+        for (const cat of previewData.categories) {
+          const exists = existingCategories.some(c => c.id === cat.id);
+          if (!exists) {
+            await db.categories.add(cat);
+            stats.categories++;
+          }
         }
       }
 
-      toast.success(`Import complete: ${importedCount} added, ${duplicateCount} skipped (duplicates).`);
+      // 2. Import Expenses
+      if (previewData.expenses.length > 0) {
+        const existing = await db.expenses.toArray();
+        for (const exp of previewData.expenses) {
+          const isDuplicate = existing.some(e =>
+            e.title === exp.title &&
+            e.amount === exp.amount &&
+            e.date.getTime() === exp.date.getTime()
+          );
+          if (!isDuplicate) {
+            await db.expenses.add(exp);
+            stats.expenses++;
+          }
+        }
+      }
+
+      // 3. Import Budgets
+      if (previewData.budgets.length > 0) {
+        const existing = await db.budgets.toArray();
+        for (const budget of previewData.budgets) {
+          const isDuplicate = existing.some(b =>
+            b.categoryId === budget.categoryId &&
+            b.period === budget.period
+          );
+          if (!isDuplicate) {
+            await db.budgets.add(budget);
+            stats.budgets++;
+          }
+        }
+      }
+
+      // 4. Import Recurring Expenses
+      if (previewData.recurringExpenses.length > 0) {
+        const existing = await db.recurringExpenses.toArray();
+        for (const rec of previewData.recurringExpenses) {
+          const isDuplicate = existing.some(r =>
+            r.title === rec.title &&
+            r.categoryId === rec.categoryId &&
+            r.frequency === rec.frequency
+          );
+          if (!isDuplicate) {
+            await db.recurringExpenses.add(rec);
+            stats.recurring++;
+          }
+        }
+      }
+
+      // 5. Import Savings Goals
+      if (previewData.savingsGoals.length > 0) {
+        const existing = await db.savingsGoals.toArray();
+        for (const goal of previewData.savingsGoals) {
+          const isDuplicate = existing.some(g =>
+            g.title === goal.title &&
+            g.targetAmount === goal.targetAmount
+          );
+          if (!isDuplicate) {
+            await db.savingsGoals.add(goal);
+            stats.goals++;
+          }
+        }
+      }
+
+      toast.success(
+        `Import complete! Categories: ${stats.categories}, Expenses: ${stats.expenses}, ` +
+        `Budgets: ${stats.budgets}, Recurring: ${stats.recurring}, Goals: ${stats.goals}`
+      );
+      
       setShowPreview(false);
-      setPreviewData([]);
+      setPreviewData({
+        categories: [],
+        expenses: [],
+        budgets: [],
+        recurringExpenses: [],
+        savingsGoals: []
+      });
     } catch (error) {
+      console.error('Import error:', error);
       toast.error("Import failed");
     }
   };
 
-  const removeFromPreview = (index: number) => {
-    setPreviewData(prev => prev.filter((_, i) => i !== index));
+  const removeFromPreview = (sheetType: keyof ImportPreview, index: number) => {
+    setPreviewData(prev => ({
+      ...prev,
+      [sheetType]: prev[sheetType].filter((_, i) => i !== index)
+    }));
   };
+
+  const totalRecords = 
+    previewData.categories.length +
+    previewData.expenses.length +
+    previewData.budgets.length +
+    previewData.recurringExpenses.length +
+    previewData.savingsGoals.length;
 
   return (
     <div className="space-y-6">
@@ -202,11 +413,14 @@ const ImportExport: React.FC = () => {
              </div>
              
              <div className="bg-muted/50 p-4 rounded-xl space-y-2">
-                <h4 className="text-xs font-black uppercase text-muted-foreground tracking-tighter">Requirements</h4>
+                <h4 className="text-xs font-black uppercase text-muted-foreground tracking-tighter">Supported Sheets</h4>
                 <ul className="text-[10px] space-y-1 text-muted-foreground font-medium">
-                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> Header columns: Title, Amount, Date, CategoryId</li>
-                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> Date format: YYYY-MM-DD</li>
-                   <li className="flex items-center gap-2"><AlertCircle size={12} className="text-amber-500" /> Duplicates will be automatically skipped</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> Categories (id, name, color, type)</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> Expenses (title, amount, date, categoryId)</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> Budgets (categoryId, monthlyLimit, period)</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> Recurring (title, amount, categoryId, frequency)</li>
+                   <li className="flex items-center gap-2"><CheckCircle2 size={12} className="text-green-500" /> SavingsGoals (title, targetAmount, currentAmount)</li>
+                   <li className="flex items-center gap-2"><AlertCircle size={12} className="text-amber-500" /> Date format: YYYY-MM-DD (auto-converts Excel dates)</li>
                 </ul>
              </div>
           </CardContent>
@@ -215,40 +429,212 @@ const ImportExport: React.FC = () => {
 
       {/* Import Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Preview</DialogTitle>
-            <CardDescription>Review {previewData.length} records before final import.</CardDescription>
+            <CardDescription>Review {totalRecords} records before final import.</CardDescription>
           </DialogHeader>
-          <ScrollArea className="max-h-[400px] rounded-md border mt-4">
-             <Table>
-               <TableHeader>
-                 <TableRow>
-                   <TableHead>Date</TableHead>
-                   <TableHead>Title</TableHead>
-                   <TableHead className="text-right">Amount</TableHead>
-                   <TableHead className="w-10"></TableHead>
-                 </TableRow>
-               </TableHeader>
-               <TableBody>
-                 {previewData.map((item, idx) => (
-                   <TableRow key={idx}>
-                     <TableCell className="text-xs">{format(item.date, 'yyyy-MM-dd')}</TableCell>
-                     <TableCell className="text-xs font-bold">{item.title}</TableCell>
-                     <TableCell className="text-xs text-right font-black">₹{item.amount.toLocaleString()}</TableCell>
-                     <TableCell>
-                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview(idx)}>
-                         <Trash2 size={12} />
-                       </Button>
-                     </TableCell>
-                   </TableRow>
-                 ))}
-               </TableBody>
-             </Table>
-          </ScrollArea>
+
+          <Tabs defaultValue="expenses" className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="grid w-full grid-cols-5">
+              {previewData.categories.length > 0 && (
+                <TabsTrigger value="categories" className="text-xs">
+                  Categories ({previewData.categories.length})
+                </TabsTrigger>
+              )}
+              {previewData.expenses.length > 0 && (
+                <TabsTrigger value="expenses" className="text-xs">
+                  Expenses ({previewData.expenses.length})
+                </TabsTrigger>
+              )}
+              {previewData.budgets.length > 0 && (
+                <TabsTrigger value="budgets" className="text-xs">
+                  Budgets ({previewData.budgets.length})
+                </TabsTrigger>
+              )}
+              {previewData.recurringExpenses.length > 0 && (
+                <TabsTrigger value="recurring" className="text-xs">
+                  Recurring ({previewData.recurringExpenses.length})
+                </TabsTrigger>
+              )}
+              {previewData.savingsGoals.length > 0 && (
+                <TabsTrigger value="goals" className="text-xs">
+                  Goals ({previewData.savingsGoals.length})
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            {/* Categories Tab */}
+            {previewData.categories.length > 0 && (
+              <TabsContent value="categories" className="flex-1 overflow-hidden">
+                <ScrollArea className="max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Color</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.categories.map((cat, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-xs font-bold">{cat.name}</TableCell>
+                          <TableCell className="text-xs">{cat.type}</TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded border" style={{ backgroundColor: cat.color }}></div>
+                              {cat.color}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview('categories', idx)}>
+                              <Trash2 size={12} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </TabsContent>
+            )}
+
+            {/* Expenses Tab */}
+            {previewData.expenses.length > 0 && (
+              <TabsContent value="expenses" className="flex-1 overflow-hidden">
+                <ScrollArea className="max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Title</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.expenses.map((exp, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-xs">{format(exp.date, 'yyyy-MM-dd')}</TableCell>
+                          <TableCell className="text-xs font-bold">{exp.title}</TableCell>
+                          <TableCell className="text-xs text-right font-black">₹{exp.amount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview('expenses', idx)}>
+                              <Trash2 size={12} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </TabsContent>
+            )}
+
+            {/* Budgets Tab */}
+            {previewData.budgets.length > 0 && (
+              <TabsContent value="budgets" className="flex-1 overflow-hidden">
+                <ScrollArea className="max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Category ID</TableHead>
+                        <TableHead className="text-right">Monthly Limit</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.budgets.map((budget, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-xs font-bold">{budget.categoryId}</TableCell>
+                          <TableCell className="text-xs text-right">₹{budget.monthlyLimit.toLocaleString()}</TableCell>
+                          <TableCell className="text-xs">{budget.period}</TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview('budgets', idx)}>
+                              <Trash2 size={12} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </TabsContent>
+            )}
+
+            {/* Recurring Tab */}
+            {previewData.recurringExpenses.length > 0 && (
+              <TabsContent value="recurring" className="flex-1 overflow-hidden">
+                <ScrollArea className="max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead>Frequency</TableHead>
+                        <TableHead>Active</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.recurringExpenses.map((rec, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-xs font-bold">{rec.title}</TableCell>
+                          <TableCell className="text-xs text-right">₹{rec.amount.toLocaleString()}</TableCell>
+                          <TableCell className="text-xs">{rec.frequency}</TableCell>
+                          <TableCell className="text-xs">{rec.isActive ? '✓' : '✗'}</TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview('recurringExpenses', idx)}>
+                              <Trash2 size={12} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </TabsContent>
+            )}
+
+            {/* Goals Tab */}
+            {previewData.savingsGoals.length > 0 && (
+              <TabsContent value="goals" className="flex-1 overflow-hidden">
+                <ScrollArea className="max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
+                        <TableHead className="text-right">Current</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.savingsGoals.map((goal, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="text-xs font-bold">{goal.title}</TableCell>
+                          <TableCell className="text-xs text-right">₹{goal.targetAmount.toLocaleString()}</TableCell>
+                          <TableCell className="text-xs text-right">₹{goal.currentAmount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview('savingsGoals', idx)}>
+                              <Trash2 size={12} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </TabsContent>
+            )}
+          </Tabs>
+
           <DialogFooter className="mt-4">
-             <Button variant="outline" onClick={() => setShowPreview(false)}>Cancel</Button>
-             <Button onClick={processImport} className="font-bold">Confirm Import ({previewData.length} records)</Button>
+            <Button variant="outline" onClick={() => setShowPreview(false)}>Cancel</Button>
+            <Button onClick={processImport} className="font-bold">Confirm Import ({totalRecords} records)</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
