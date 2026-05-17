@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Expense } from '@/lib/db';
 import { 
@@ -10,7 +10,6 @@ import {
   flexRender,
   createColumnHelper,
   type SortingState,
-  type ColumnFiltersState
 } from '@tanstack/react-table';
 import { 
   Table, 
@@ -63,14 +62,11 @@ const Expenses: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'date', desc: true }]);
   const [globalFilter, setGlobalFilter] = useState('');
-
-  // Mobile-specific filter state (mirrors table filters for card list)
-  const [mobileMonth, setMobileMonth] = useState<string>('all');
-  const [mobileCategoryId, setMobileCategoryId] = useState<string>('all');
-  const [mobileSortBy, setMobileSortBy] = useState<string>('date-desc');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('date-desc');
 
   const expenses = useLiveQuery(() => db.expenses.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
@@ -78,17 +74,15 @@ const Expenses: React.FC = () => {
   const columns = useMemo(() => [
     columnHelper.accessor('date', {
       header: ({ column }) => (
-        <Button variant="ghost" className="-ml-4 h-8" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+        <Button variant="ghost" className="-ml-4 h-8" onClick={() => {
+          const nextDesc = column.getIsSorted() !== "desc";
+          setSortBy(nextDesc ? 'date-desc' : 'date-asc');
+          setSorting([{ id: 'date', desc: nextDesc }]);
+        }}>
           Date <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: info => format(info.getValue() as Date, 'MMM dd, yyyy'),
-      filterFn: (row, columnId, filterValue) => {
-        if (!filterValue || filterValue.length !== 2) return true;
-        const [start, end] = filterValue;
-        const date = row.getValue(columnId) as Date;
-        return date >= start && date <= end;
-      },
+      cell: info => format(new Date(info.getValue() as Date), 'MMM dd, yyyy'),
     }),
     columnHelper.accessor('title', {
       header: 'Title',
@@ -110,7 +104,11 @@ const Expenses: React.FC = () => {
     columnHelper.accessor('amount', {
       header: ({ column }) => (
         <div className="text-right">
-          <Button variant="ghost" className="h-8" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          <Button variant="ghost" className="h-8" onClick={() => {
+            const nextDesc = column.getIsSorted() !== "desc";
+            setSortBy(nextDesc ? 'amount-desc' : 'amount-asc');
+            setSorting([{ id: 'amount', desc: nextDesc }]);
+          }}>
             Amount <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         </div>
@@ -142,28 +140,6 @@ const Expenses: React.FC = () => {
     }),
   ], [categories]);
 
-  const table = useReactTable({
-    data: expenses,
-    columns,
-    state: {
-      sorting,
-      columnFilters,
-      globalFilter,
-    },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
-  });
-
   const handleDelete = async (id: number) => {
     if (confirm("Are you sure you want to delete this expense?")) {
       await db.expenses.delete(id);
@@ -177,37 +153,79 @@ const Expenses: React.FC = () => {
     end: new Date()
   }).reverse();
 
-  // Mobile filtered + sorted list derived from raw expenses
-  const mobileFilteredExpenses = useMemo(() => {
+  const filteredExpenses = useMemo(() => {
     let list = [...expenses];
 
-    // Filter by month
-    if (mobileMonth !== 'all') {
-      const [year, month] = mobileMonth.split('-').map(Number);
+    if (selectedMonth !== 'all') {
+      const [year, month] = selectedMonth.split('-').map(Number);
       const start = startOfMonth(new Date(year, month - 1, 1));
       const end = endOfMonth(new Date(year, month - 1, 1));
-      list = list.filter(e => e.date >= start && e.date <= end);
+      list = list.filter(e => {
+        const expenseDate = new Date(e.date);
+        return expenseDate >= start && expenseDate <= end;
+      });
     }
 
-    // Filter by category
-    if (mobileCategoryId !== 'all') {
-      list = list.filter(e => e.categoryId === mobileCategoryId);
+    if (selectedCategoryId !== 'all') {
+      list = list.filter(e => e.categoryId === selectedCategoryId);
     }
 
-    // Filter by global search
-    if (globalFilter) {
-      const q = globalFilter.toLowerCase();
-      list = list.filter(e => e.title.toLowerCase().includes(q));
+    const query = globalFilter.trim().toLowerCase();
+    if (query) {
+      list = list.filter(e => {
+        const categoryName = getCategoryName(categories, e.categoryId).toLowerCase();
+        return (
+          e.title.toLowerCase().includes(query) ||
+          categoryName.includes(query) ||
+          e.note?.toLowerCase().includes(query)
+        );
+      });
     }
-
-    // Sort
-    if (mobileSortBy === 'date-desc') list.sort((a, b) => b.date.getTime() - a.date.getTime());
-    if (mobileSortBy === 'date-asc') list.sort((a, b) => a.date.getTime() - b.date.getTime());
-    if (mobileSortBy === 'amount-desc') list.sort((a, b) => b.amount - a.amount);
-    if (mobileSortBy === 'amount-asc') list.sort((a, b) => a.amount - b.amount);
 
     return list;
-  }, [expenses, mobileMonth, mobileCategoryId, globalFilter, mobileSortBy]);
+  }, [categories, expenses, globalFilter, selectedCategoryId, selectedMonth]);
+
+  const sortedCardExpenses = useMemo(() => {
+    const list = [...filteredExpenses];
+
+    if (sortBy === 'date-desc') list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (sortBy === 'date-asc') list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    if (sortBy === 'amount-desc') list.sort((a, b) => b.amount - a.amount);
+    if (sortBy === 'amount-asc') list.sort((a, b) => a.amount - b.amount);
+
+    return list;
+  }, [filteredExpenses, sortBy]);
+
+  const handleSortChange = (value: string) => {
+    setSortBy(value);
+
+    if (value === 'date-desc') setSorting([{ id: 'date', desc: true }]);
+    if (value === 'date-asc') setSorting([{ id: 'date', desc: false }]);
+    if (value === 'amount-desc') setSorting([{ id: 'amount', desc: true }]);
+    if (value === 'amount-asc') setSorting([{ id: 'amount', desc: false }]);
+  };
+
+  const table = useReactTable({
+    data: filteredExpenses,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    initialState: {
+      pagination: {
+        pageSize: 10,
+      },
+    },
+  });
+
+  useEffect(() => {
+    table.setPageIndex(0);
+  }, [globalFilter, selectedCategoryId, selectedMonth, sortBy]);
 
   const addEditDialog = (
     <Dialog open={isDialogOpen} onOpenChange={(open) => {
@@ -270,7 +288,7 @@ const Expenses: React.FC = () => {
       <div className="md:hidden space-y-4">
         {/* Mobile Filters: 2-column grid */}
         <div className="grid grid-cols-2 gap-2">
-          <Select value={mobileMonth} onValueChange={(v) => setMobileMonth(v ?? 'all')}>
+          <Select value={selectedMonth} onValueChange={(v) => setSelectedMonth(v ?? 'all')}>
             <SelectTrigger className="h-10 bg-muted/50 border-none w-full">
               <SelectValue placeholder="Month" />
             </SelectTrigger>
@@ -284,11 +302,11 @@ const Expenses: React.FC = () => {
             </SelectContent>
           </Select>
 
-          <Select value={mobileCategoryId} onValueChange={(v) => setMobileCategoryId(v ?? 'all')}>
+          <Select value={selectedCategoryId} onValueChange={(v) => setSelectedCategoryId(v ?? 'all')}>
             <SelectTrigger className="h-10 bg-muted/50 border-none w-full">
               <SelectValue placeholder="Category">
-                {mobileCategoryId !== 'all'
-                  ? (categories.find(c => c.id === mobileCategoryId)?.name ?? 'Category')
+                {selectedCategoryId !== 'all'
+                  ? (categories.find(c => c.id === selectedCategoryId)?.name ?? 'Category')
                   : 'Category'}
               </SelectValue>
             </SelectTrigger>
@@ -300,7 +318,7 @@ const Expenses: React.FC = () => {
             </SelectContent>
           </Select>
 
-          <Select value={mobileSortBy} onValueChange={(v) => setMobileSortBy(v ?? 'date-desc')} defaultValue="date-desc">
+          <Select value={sortBy} onValueChange={(v) => handleSortChange(v ?? 'date-desc')}>
             <SelectTrigger className="h-10 bg-muted/50 border-none w-full col-span-2">
               <SelectValue placeholder="Sort By" />
             </SelectTrigger>
@@ -315,17 +333,17 @@ const Expenses: React.FC = () => {
 
         {/* Transaction count */}
         <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest">
-          {mobileFilteredExpenses.length} Transaction{mobileFilteredExpenses.length !== 1 ? 's' : ''}
+          {sortedCardExpenses.length} Transaction{sortedCardExpenses.length !== 1 ? 's' : ''}
         </p>
 
         {/* Card list */}
-        {mobileFilteredExpenses.length === 0 ? (
+        {sortedCardExpenses.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
             <p className="font-medium italic">No matching transactions found.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {mobileFilteredExpenses.map((expense) => {
+            {sortedCardExpenses.map((expense) => {
               const cat = categories.find(c => c.id === expense.categoryId);
               const isInflow = cat?.type === 'inflow';
               return (
@@ -347,7 +365,7 @@ const Expenses: React.FC = () => {
                         <div className="min-w-0">
                           <p className="font-bold text-base leading-tight truncate">{expense.title}</p>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {format(expense.date, 'MMM dd, yyyy')}
+                            {format(new Date(expense.date), 'MMM dd, yyyy')}
                           </p>
                         </div>
                       </div>
@@ -406,17 +424,7 @@ const Expenses: React.FC = () => {
           <CardHeader className="pb-3">
             <div className="flex flex-wrap gap-2">
               {/* Month Filter */}
-              <Select onValueChange={(v: string | null) => {
-                if (!v || v === 'all') {
-                  table.getColumn('date')?.setFilterValue(undefined);
-                } else {
-                  const [year, month] = v.split('-').map(Number);
-                  const date = new Date(year, month - 1, 1);
-                  const start = startOfMonth(date);
-                  const end = endOfMonth(date);
-                  table.getColumn('date')?.setFilterValue([start, end]);
-                }
-              }}>
+              <Select value={selectedMonth} onValueChange={(v) => setSelectedMonth(v ?? 'all')}>
                 <SelectTrigger className="w-[140px] h-10 bg-muted/50 border-none">
                   <SelectValue placeholder="Month" />
                 </SelectTrigger>
@@ -431,11 +439,11 @@ const Expenses: React.FC = () => {
               </Select>
 
               {/* Category Filter */}
-              <Select onValueChange={(v) => table.getColumn('categoryId')?.setFilterValue(v === 'all' ? undefined : v)}>
+              <Select value={selectedCategoryId} onValueChange={(v) => setSelectedCategoryId(v ?? 'all')}>
                 <SelectTrigger className="w-[140px] h-10 bg-muted/50 border-none">
                   <SelectValue placeholder="Category">
-                    {table.getColumn('categoryId')?.getFilterValue() 
-                      ? getCategoryName(categories, table.getColumn('categoryId')?.getFilterValue() as string) 
+                    {selectedCategoryId !== 'all'
+                      ? getCategoryName(categories, selectedCategoryId)
                       : "Category"}
                   </SelectValue>
                 </SelectTrigger>
@@ -448,12 +456,7 @@ const Expenses: React.FC = () => {
               </Select>
 
               {/* Sort Shortcut */}
-              <Select onValueChange={(v) => {
-                if (v === 'date-desc') setSorting([{ id: 'date', desc: true }]);
-                if (v === 'date-asc') setSorting([{ id: 'date', desc: false }]);
-                if (v === 'amount-desc') setSorting([{ id: 'amount', desc: true }]);
-                if (v === 'amount-asc') setSorting([{ id: 'amount', desc: false }]);
-              }}>
+              <Select value={sortBy} onValueChange={(v) => handleSortChange(v ?? 'date-desc')}>
                 <SelectTrigger className="w-[140px] h-10 bg-muted/50 border-none">
                   <SelectValue placeholder="Sort By" />
                 </SelectTrigger>
@@ -505,7 +508,9 @@ const Expenses: React.FC = () => {
             {/* Pagination */}
             <div className="flex items-center justify-between mt-6 px-1">
               <div className="text-xs text-muted-foreground font-bold uppercase tracking-widest">
-                Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
+                Showing {table.getFilteredRowModel().rows.length === 0
+                  ? 0
+                  : table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
                 {Math.min(
                   (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
                   table.getFilteredRowModel().rows.length

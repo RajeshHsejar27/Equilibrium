@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db';
+import { db, type Settings as AppSettings } from '@/lib/db';
 import { 
   Card, 
   CardContent, 
@@ -29,12 +29,16 @@ import { useTheme } from '@/context/ThemeContext';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+const MIN_ALERT_THRESHOLD = 40;
+const MAX_ALERT_THRESHOLD = 100;
+const ALERT_THRESHOLD_STEP = 5;
+
+const clampAlertThreshold = (value: number) => {
+  if (!Number.isFinite(value)) return 80;
+
+  const steppedValue = Math.round(value / ALERT_THRESHOLD_STEP) * ALERT_THRESHOLD_STEP;
+  return Math.min(MAX_ALERT_THRESHOLD, Math.max(MIN_ALERT_THRESHOLD, steppedValue));
+};
 
 const Settings: React.FC = () => {
   const { theme, setTheme } = useTheme();
@@ -42,11 +46,19 @@ const Settings: React.FC = () => {
   const settings = useLiveQuery(() => db.settings.get(1));
 
   const [name, setName] = useState('');
+  const [thresholdInput, setThresholdInput] = useState('80');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  const alertThreshold = clampAlertThreshold(settings?.alertThreshold ?? 80);
+  const overspendingAlertEnabled = Boolean(settings?.overspendingAlert);
 
   useEffect(() => {
     if (profile) setName(profile.name);
   }, [profile]);
+
+  useEffect(() => {
+    setThresholdInput(String(alertThreshold));
+  }, [alertThreshold]);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -56,6 +68,35 @@ const Settings: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
+
+  const updateSettings = async (updates: Partial<AppSettings>) => {
+    if (!settings) return;
+
+    await db.settings.put({
+      ...settings,
+      ...updates,
+    });
+  };
+
+  const persistAlertThreshold = async (value: number) => {
+    const nextValue = clampAlertThreshold(value);
+    setThresholdInput(String(nextValue));
+
+    if (!settings || settings.alertThreshold === nextValue) return;
+
+    await db.settings.put({
+      ...settings,
+      alertThreshold: nextValue,
+    });
+  };
+
+  const handleDevelopmentFeatureClick = (feature: 'emailReports' | 'billReminders') => {
+    toast("Feature in development:", {
+      description: feature === 'emailReports'
+        ? "Email reports coming soon."
+        : "Bill reminders coming soon.",
+    });
+  };
 
   const handleUpdateProfile = async () => {
     await db.profile.update(1, { name });
@@ -202,33 +243,64 @@ const Settings: React.FC = () => {
                       <Label className="text-base">Overspending Alert</Label>
                       <p className="text-xs text-muted-foreground">Get notified when a category budget is high</p>
                    </div>
-                   <Switch 
-                     checked={settings?.overspendingAlert} 
-                     onCheckedChange={(checked: boolean) => db.settings.update(1, { overspendingAlert: checked })} 
+                   <Switch
+                     checked={overspendingAlertEnabled}
+                     onCheckedChange={(checked: boolean) => updateSettings({ overspendingAlert: checked })}
                    />
                 </div>
-                <div className="space-y-4">
-                   <div className="flex justify-between">
+                <div className={cn(
+                  "space-y-4 rounded-xl bg-muted/30 p-4 transition-opacity",
+                  !overspendingAlertEnabled && "opacity-50"
+                )}>
+                   <div className="flex items-center justify-between gap-4">
                       <Label className="text-sm">Alert Threshold</Label>
-                      <span className="text-sm font-black text-primary">{settings?.alertThreshold || 80}%</span>
+                      <span className="text-sm font-black text-primary tabular-nums">{alertThreshold}%</span>
                    </div>
-                   <TooltipProvider>
-                     <Tooltip>
-                       <TooltipTrigger>
-                         <div className="pt-2">
-                           <Slider 
-                             value={[settings?.alertThreshold || 80]} 
-                             onValueChange={(val: any) => db.settings.update(1, { alertThreshold: val[0] })} 
-                             max={100} 
-                             step={5} 
-                           />
-                         </div>
-                       </TooltipTrigger>
-                       <TooltipContent>
-                         <p>Notify when spending exceeds {settings?.alertThreshold || 80}% of your budget</p>
-                       </TooltipContent>
-                     </Tooltip>
-                   </TooltipProvider>
+                   <div className="space-y-3">
+                     <div className="flex items-center gap-3">
+                       <span className="text-xs font-bold text-muted-foreground tabular-nums">40</span>
+                       <Slider
+                         value={[alertThreshold]}
+                         onValueChange={(val: any) => persistAlertThreshold(val[0])}
+                         min={MIN_ALERT_THRESHOLD}
+                         max={MAX_ALERT_THRESHOLD}
+                         step={ALERT_THRESHOLD_STEP}
+                         disabled={!overspendingAlertEnabled}
+                         className={cn(!overspendingAlertEnabled && "cursor-not-allowed")}
+                       />
+                       <span className="text-xs font-bold text-muted-foreground tabular-nums">100</span>
+                     </div>
+                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                       <p className="text-xs leading-relaxed text-muted-foreground">
+                         You will be notified when a category spending crosses the selected budget threshold.
+                       </p>
+                       <div className="flex h-10 w-full shrink-0 items-center rounded-lg bg-background ring-1 ring-border sm:w-28">
+                         <Input
+                           type="number"
+                           min={MIN_ALERT_THRESHOLD}
+                           max={MAX_ALERT_THRESHOLD}
+                           step={ALERT_THRESHOLD_STEP}
+                           value={thresholdInput}
+                           disabled={!overspendingAlertEnabled}
+                           onChange={(event) => {
+                             const value = event.target.value;
+                             setThresholdInput(value);
+
+                             if (value !== '') {
+                               persistAlertThreshold(Number(value));
+                             }
+                           }}
+                           onBlur={() => {
+                             if (thresholdInput === '') {
+                               persistAlertThreshold(alertThreshold);
+                             }
+                           }}
+                           className="h-full border-none bg-transparent text-center font-black tabular-nums shadow-none focus-visible:ring-0 disabled:cursor-not-allowed"
+                         />
+                         <span className="pr-3 text-sm font-bold text-muted-foreground">%</span>
+                       </div>
+                     </div>
+                   </div>
                 </div>
              </div>
              
@@ -238,20 +310,42 @@ const Settings: React.FC = () => {
                       <Label className="text-base">Email Reports</Label>
                       <p className="text-xs text-muted-foreground">Weekly summary of your finances</p>
                    </div>
-                   <Switch 
-                     checked={settings?.emailReports} 
-                     onCheckedChange={(checked: boolean) => db.settings.update(1, { emailReports: checked })} 
-                   />
+                   <div
+                     aria-disabled="true"
+                     title="Feature in development"
+                     className="opacity-50 cursor-not-allowed"
+                     onClick={() => handleDevelopmentFeatureClick('emailReports')}
+                   >
+                     <Switch
+                       checked={false}
+                       disabled
+                       className="pointer-events-none"
+                     />
+                   </div>
                 </div>
                 <div className="space-y-2">
                    <Label className="text-xs uppercase font-bold text-muted-foreground">Email Address</Label>
-                   <div className="flex gap-2">
-                      <Input 
-                        placeholder="your@email.com" 
-                        defaultValue={settings?.emailAddress}
-                        className="bg-muted/50 border-none"
-                      />
-                      <Button variant="outline" size="icon"><Mail size={16} /></Button>
+                   <div
+                     aria-disabled="true"
+                     title="Feature in development"
+                     className="flex gap-2 opacity-50 cursor-not-allowed"
+                     onClick={() => handleDevelopmentFeatureClick('emailReports')}
+                   >
+                     <Input
+                       placeholder="your@email.com"
+                       value={settings?.emailAddress ?? ''}
+                       disabled
+                       readOnly
+                       className="pointer-events-none bg-muted/50 border-none disabled:cursor-not-allowed"
+                     />
+                     <Button
+                       variant="outline"
+                       size="icon"
+                       disabled
+                       className="pointer-events-none"
+                     >
+                       <Mail size={16} />
+                     </Button>
                    </div>
                 </div>
              </div>
@@ -261,10 +355,18 @@ const Settings: React.FC = () => {
                    <Label className="text-base">Bill Reminders</Label>
                    <p className="text-xs text-muted-foreground">Notify me before recurring bills are due</p>
                 </div>
-                <Switch 
-                  checked={settings?.billReminders} 
-                  onCheckedChange={(checked: boolean) => db.settings.update(1, { billReminders: checked })} 
-                />
+                <div
+                  aria-disabled="true"
+                  title="Feature in development"
+                  className="opacity-50 cursor-not-allowed"
+                  onClick={() => handleDevelopmentFeatureClick('billReminders')}
+                >
+                  <Switch
+                    checked={false}
+                    disabled
+                    className="pointer-events-none"
+                  />
+                </div>
              </div>
           </CardContent>
         </Card>
