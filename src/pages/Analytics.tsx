@@ -42,6 +42,7 @@ const Analytics: React.FC = () => {
 
   const expenses = useLiveQuery(() => db.expenses.toArray()) || [];
   const categories = useLiveQuery(() => db.categories.toArray()) || [];
+  const recurring = useLiveQuery(() => db.recurringExpenses.toArray()) || [];
 
   if (!categories || categories.length === 0) {
     return (
@@ -161,12 +162,15 @@ const Analytics: React.FC = () => {
     }
 
     // Savings Opportunity
-    insights.push({
-      title: "Subscription Cleanup",
-      description: "We noticed 3 recurring payments this week. Consider reviewing and canceling unused subscriptions to save ₹1,500/month.",
-      icon: <Lightbulb className="text-primary" />,
-      type: 'info'
-    });
+    if (recurring.length > 0) {
+      const recurringTotal = recurring.reduce((acc, curr) => acc + curr.amount, 0);
+      insights.push({
+        title: "Subscription Cleanup",
+        description: `We noticed ${recurring.length} recurring payment${recurring.length > 1 ? 's' : ''} in your account. Consider reviewing and canceling unused subscriptions to save ₹${recurringTotal.toLocaleString()}/month.`,
+        icon: <Lightbulb className="text-primary" />,
+        type: 'info'
+      });
+    }
 
     // Positive Trend
     const lastMonthSpent = expenses
