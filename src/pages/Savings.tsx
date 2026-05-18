@@ -259,9 +259,9 @@ const SavingsGoals: React.FC = () => {
               "relative overflow-hidden group transition-all border-2",
               isSavingsDeficit ? "border-amber-400 shadow-amber-100" : "border-transparent shadow-lg"
             )}>
-               <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+               <div className="absolute top-0 right-0 p-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10">
                   <div className="flex gap-1">
-                    <Button variant="secondary" size="icon" className="h-8 w-8 shadow-sm" onClick={() => {
+                    <Button variant="secondary" size="icon" className="h-8 w-8 shadow-sm animate-in fade-in zoom-in-50 duration-200" onClick={() => {
                       setEditingGoal(goal);
                       setTitle(goal.title);
                       setTargetAmount(goal.targetAmount);
@@ -271,32 +271,32 @@ const SavingsGoals: React.FC = () => {
                     }}>
                       <Edit2 size={12} />
                     </Button>
-                    <Button variant="secondary" size="icon" className="h-8 w-8 text-destructive shadow-sm" onClick={() => handleDelete(goal.id!)}>
+                    <Button variant="secondary" size="icon" className="h-8 w-8 text-destructive shadow-sm animate-in fade-in zoom-in-50 duration-200" onClick={() => handleDelete(goal.id!)}>
                       <Trash2 size={12} />
                     </Button>
                   </div>
                </div>
-               {isSavingsDeficit && (
-                 <div className="absolute top-4 right-4 group-hover:opacity-0 transition-opacity">
-                   <TooltipProvider>
-                     <Tooltip>
-                       <TooltipTrigger>
-                         <AlertCircle className="text-amber-500 h-6 w-6 animate-pulse" />
-                       </TooltipTrigger>
-                       <TooltipContent className="bg-amber-500 text-white border-none font-bold">
-                         <p>Savings have been drastically reduced, revise the current savings for each goals.</p>
-                       </TooltipContent>
-                     </Tooltip>
-                   </TooltipProvider>
-                 </div>
-               )}
                <CardHeader className="pb-2">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0" style={{ backgroundColor: goal.color }}>
                         <Target size={24} />
                      </div>
                      <div className="min-w-0 flex-1">
-                       <CardTitle className="text-lg font-bold break-words">{goal.title}</CardTitle>
+                       <CardTitle className="text-lg font-bold break-words flex items-center gap-1.5">
+                         {goal.title}
+                         {isSavingsDeficit && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <AlertCircle className="text-amber-500 h-5 w-5 shrink-0 animate-pulse" />
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-amber-500 text-white border-none font-bold">
+                                  <p>Savings have been drastically reduced, revise the current savings for each goal.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                       </CardTitle>
                        <CardDescription className="text-[10px] font-black uppercase tracking-widest truncate">Target: ₹{goal.targetAmount.toLocaleString()}</CardDescription>
                      </div>
                   </div>
