@@ -49,7 +49,9 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
     defaultValues: {
       title: initialData?.title || '',
       amount: initialData?.amount || 0,
-      date: initialData?.date ? initialData.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      date: initialData?.date 
+        ? (initialData.date instanceof Date ? initialData.date : new Date(initialData.date)).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
       categoryId: initialData?.categoryId || '',
       note: initialData?.note || '',
     },
@@ -77,17 +79,30 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
     }
   };
 
+  const onInvalid = (errors: any) => {
+    console.warn("Validation errors:", errors);
+    const firstError = Object.values(errors)[0] as any;
+    if (firstError?.message) {
+      toast.error(`Validation failed: ${firstError.message}`);
+    } else {
+      toast.error("Please fill in all required fields correctly.");
+    }
+  };
+
   const watchTitle = form.watch("title");
   const watchCategoryId = form.watch("categoryId");
   const selectedCategory = categories.find(c => c.id === watchCategoryId);
   
   // Smart Suggestions: Previous records + Recurring
   const historySuggestions = useLiveQuery(
-    () => db.expenses
-      .where("title")
-      .startsWithIgnoreCase(watchTitle)
-      .limit(5)
-      .toArray(),
+    () => {
+      if (!watchTitle || typeof watchTitle !== 'string') return Promise.resolve([] as Expense[]);
+      return db.expenses
+        .where("title")
+        .startsWithIgnoreCase(watchTitle.trim())
+        .limit(5)
+        .toArray();
+    },
     [watchTitle]
   ) || [];
 
@@ -99,7 +114,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, initialData
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
         <FormField
           control={form.control}
           name="title"

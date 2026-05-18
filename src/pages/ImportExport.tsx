@@ -262,13 +262,20 @@ const ImportExport: React.FC = () => {
       if (previewData.expenses.length > 0) {
         const existing = await db.expenses.toArray();
         for (const exp of previewData.expenses) {
-          const isDuplicate = existing.some(e =>
-            e.title === exp.title &&
-            e.amount === exp.amount &&
-            e.date.getTime() === exp.date.getTime()
-          );
+          const isDuplicate = existing.some(e => {
+            const eTime = e.date instanceof Date ? e.date.getTime() : new Date(e.date).getTime();
+            const expTime = exp.date instanceof Date ? exp.date.getTime() : new Date(exp.date).getTime();
+            return e.title === exp.title &&
+              e.amount === exp.amount &&
+              !isNaN(eTime) && !isNaN(expTime) &&
+              eTime === expTime;
+          });
           if (!isDuplicate) {
-            await db.expenses.add(exp);
+            const safeExp = {
+              ...exp,
+              date: exp.date instanceof Date ? exp.date : new Date(exp.date)
+            };
+            await db.expenses.add(safeExp);
             stats.expenses++;
           }
         }
