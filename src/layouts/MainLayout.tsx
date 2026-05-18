@@ -161,18 +161,22 @@ const MainLayout: React.FC = () => {
               >
                 <div className="grid grid-cols-2 gap-2">
                   {[
+                    { icon: FolderTree, label: 'Categories', to: '/categories' },
                     { icon: Wallet, label: 'Budgets', to: '/budgets' },
                     { icon: Repeat, label: 'Recurring', to: '/recurring' },
                     { icon: Download, label: 'Import/Export', to: '/import-export' },
                     { icon: Settings, label: 'Settings', to: '/settings' },
-                  ].map((item) => (
+                  ].map((item, index) => (
                     <NavLink
                       key={item.to}
                       to={item.to}
                       onClick={() => setIsMenuOpen(false)}
                       className={({ isActive }) =>
                         cn(
-                          "flex flex-col items-center justify-center p-3 rounded-2xl transition-all gap-1.5",
+                          "flex items-center justify-center p-3 rounded-2xl transition-all",
+                          index === 4 
+                            ? "col-span-2 flex-row gap-3 py-2.5" 
+                            : "flex-col gap-1.5",
                           isActive 
                             ? "bg-primary text-primary-foreground shadow-md shadow-primary/10" 
                             : "hover:bg-muted text-muted-foreground hover:text-foreground bg-muted/40"

@@ -291,14 +291,14 @@ const SavingsGoals: React.FC = () => {
                  </div>
                )}
                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: goal.color }}>
-                       <Target size={24} />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg font-bold">{goal.title}</CardTitle>
-                      <CardDescription className="text-[10px] font-black uppercase tracking-widest">Target: ₹{goal.targetAmount.toLocaleString()}</CardDescription>
-                    </div>
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                     <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0" style={{ backgroundColor: goal.color }}>
+                        <Target size={24} />
+                     </div>
+                     <div className="min-w-0 flex-1">
+                       <CardTitle className="text-lg font-bold break-words">{goal.title}</CardTitle>
+                       <CardDescription className="text-[10px] font-black uppercase tracking-widest truncate">Target: ₹{goal.targetAmount.toLocaleString()}</CardDescription>
+                     </div>
                   </div>
                </CardHeader>
                <CardContent className="space-y-4">

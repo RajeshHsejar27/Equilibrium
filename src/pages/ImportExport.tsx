@@ -510,6 +510,7 @@ const ImportExport: React.FC = () => {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Title</TableHead>
+                        <TableHead>Category ID</TableHead>
                         <TableHead className="text-right">Amount</TableHead>
                         <TableHead className="w-10"></TableHead>
                       </TableRow>
@@ -519,6 +520,7 @@ const ImportExport: React.FC = () => {
                         <TableRow key={idx}>
                           <TableCell className="text-xs">{format(exp.date, 'yyyy-MM-dd')}</TableCell>
                           <TableCell className="text-xs font-bold">{exp.title}</TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground">{exp.categoryId}</TableCell>
                           <TableCell className="text-xs text-right font-black">₹{exp.amount.toLocaleString()}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeFromPreview('expenses', idx)}>

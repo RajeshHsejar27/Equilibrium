@@ -128,6 +128,35 @@ export class EquilibriumDB extends Dexie {
 
 export const db = new EquilibriumDB();
 
+// Ensure default profile and settings records exist in the database
+export const ensureDefaults = async () => {
+  try {
+    const settingsCount = await db.settings.count();
+    if (settingsCount === 0) {
+      await db.settings.add({
+        id: 1,
+        theme: 'dark',
+        overspendingAlert: true,
+        alertThreshold: 80,
+        emailReports: false,
+        billReminders: false,
+        totalSavings: 0
+      });
+    }
+    const profileCount = await db.profile.count();
+    if (profileCount === 0) {
+      await db.profile.add({
+        id: 1,
+        name: 'User'
+      });
+    }
+  } catch (error) {
+    console.error('Failed to initialize default database records:', error);
+  }
+};
+
+ensureDefaults();
+
 const DEFAULT_ALERT_THRESHOLD = 80;
 const MIN_ALERT_THRESHOLD = 40;
 const MAX_ALERT_THRESHOLD = 100;

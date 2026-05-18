@@ -23,13 +23,14 @@ import {
   ExternalLink,
   Download,
   ShieldCheck,
-  SmartphoneIcon
+  SmartphoneIcon,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import { exportData } from '@/lib/exportData';
+import { exportData, downloadMockTemplate } from '@/lib/exportData';
 const MIN_ALERT_THRESHOLD = 40;
 const MAX_ALERT_THRESHOLD = 100;
 const ALERT_THRESHOLD_STEP = 5;
@@ -392,6 +393,30 @@ const Settings: React.FC = () => {
                    {deferredPrompt ? 'Install Now' : 'Check PWA Status'}
                 </Button>
              </div>
+          </CardContent>
+        </Card>
+
+        {/* Mock Data Template */}
+        <Card className="border-none shadow-lg md:col-span-2 bg-muted/20 border border-muted-foreground/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+               <FileSpreadsheet className="h-5 w-5 text-primary" />
+               Sample Mock Data Template
+            </CardTitle>
+            <CardDescription>
+               New to Equilibrium? Download our pre-populated template filled with sample categories, expenses, monthly budgets, recurring bills, and savings goals so you can see all features and dashboard analytics instantly!
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row items-center justify-between gap-4">
+             <div className="text-xs text-muted-foreground leading-relaxed max-w-xl">
+                Once downloaded, go to the <strong className="text-foreground">Import/Export</strong> page, upload this template, and see your financial stats light up! Alternatively, you can start putting in your own details or import custom files.
+             </div>
+             <Button 
+               onClick={() => downloadMockTemplate()} 
+               className="font-bold gap-2 shadow-md shadow-primary/10 h-11 px-6 shrink-0 w-full sm:w-auto"
+             >
+                <Download size={16} /> Download Template (.xlsx)
+             </Button>
           </CardContent>
         </Card>
 

@@ -185,17 +185,17 @@ const Recurring: React.FC = () => {
           const category = categories.find(c => c.id === item.categoryId);
           return (
             <Card key={item.id} className="border-none shadow-lg group hover:shadow-xl transition-all">
-               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                       <CreditCard size={24} />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">{item.title}</CardTitle>
-                      <CardDescription className="text-[10px] uppercase font-bold tracking-widest">{category?.name}</CardDescription>
-                    </div>
+               <CardHeader className="flex flex-row items-center justify-between pb-2 gap-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                     <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
+                        <CreditCard size={24} />
+                     </div>
+                     <div className="min-w-0 flex-1">
+                       <CardTitle className="text-base break-words">{item.title}</CardTitle>
+                       <CardDescription className="text-[10px] uppercase font-bold tracking-widest truncate">{category?.name}</CardDescription>
+                     </div>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
                         setEditingRecurring(item);
                         setTitle(item.title);

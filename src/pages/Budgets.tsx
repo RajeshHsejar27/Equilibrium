@@ -159,23 +159,23 @@ const Budgets: React.FC = () => {
             )}>
                <div className="h-1.5 w-full" style={{ backgroundColor: category?.color }} />
                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                       {category?.name}
-                    </CardTitle>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                         setEditingBudget(budget);
-                         setCategoryId(budget.categoryId);
-                         setLimit(budget.monthlyLimit);
-                         setIsDialogOpen(true);
-                       }}>
-                         <Edit2 size={12} />
-                       </Button>
-                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => db.budgets.delete(budget.id!)}>
-                         <Trash2 size={12} />
-                       </Button>
-                    </div>
+                  <div className="flex items-center justify-between gap-4">
+                     <CardTitle className="text-lg flex items-center gap-2 break-words min-w-0 flex-1">
+                        {category?.name}
+                     </CardTitle>
+                     <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                          setEditingBudget(budget);
+                          setCategoryId(budget.categoryId);
+                          setLimit(budget.monthlyLimit);
+                          setIsDialogOpen(true);
+                        }}>
+                          <Edit2 size={12} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => db.budgets.delete(budget.id!)}>
+                          <Trash2 size={12} />
+                        </Button>
+                     </div>
                   </div>
                </CardHeader>
                <CardContent className="space-y-4">
